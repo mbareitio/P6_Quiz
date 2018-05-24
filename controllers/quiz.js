@@ -86,6 +86,9 @@ exports.index = (req, res, next) => {
 
         return models.quiz.findAll(findOptions);
     })
+    req.session.score = 0;
+    
+    models.quiz.findAll()
     .then(quizzes => {
         res.render('quizzes/index.ejs', {
             quizzes, 
@@ -225,3 +228,87 @@ exports.check = (req, res, next) => {
         answer
     });
 };
+
+
+//GET /quizzes/randomPlay
+exports.randomPlay = (req, res, next) => {
+
+    if (req.session.randomplay === undefined) {
+        req.session.randomplay = [];
+    } else {
+        req.session.randomplay = req.session.randomplay;
+    }
+    
+    console.log(req.session);
+
+    Sequelize.Promise.resolve()
+        .then(() => {
+            return models.quiz.count({where: {'id':{[Sequelize.Op.notIn]: req.session.randomplay}}})
+            .then(notIn => { //Numero de quizzes que no están en el random play
+                console.log('Numero de quizzes que no estan en randomPlay es: ' + notIn);
+                let i = Math.floor(Math.random()*notIn); // Id aleatorio
+
+                console.log('El numero aleatorio es: ' + i);
+                return models.quiz.findAll({where: {'id':{[Sequelize.Op.notIn]: req.session.randomplay}}})
+                .then(quizzes => {
+                    return quizzes[i]; //Devolvemos un quiz aleatorio
+                })
+            })
+        })
+
+        .then(quiz => {
+            console.log('El quiz aleatorio es: ' + quiz.question);
+            let score = req.session.randomplay.length;
+            res.render('quizzes/random_play', {
+                quiz: quiz, 
+                score: score
+            });
+        })
+};
+
+
+//GET /quizzes/randomCheck
+exports.randomCheck = (req, res, next) => {
+
+
+    let totalQuizzes; //numero total de quizzes
+
+    Sequelize.Promise.resolve()
+        .then(() => {
+            return models.quiz.count()
+            .then(num => {
+                totalQuizzes = num;
+            })
+        })
+
+        .then(() => {
+            const givenAnswer = req.query.answer || ''; //req.query.['answer']
+            const result = req.quiz.answer.toLowerCase().trim() === givenAnswer.toLowerCase().trim();
+            if(result){ //Acierto
+                req.session.randomplay.push(req.quiz.id);  
+                const score = req.session.randomplay.length;
+                if(score === totalQuizzes){ //No hay más preguntas que mostrar
+                    console.log('NO HAY MAS PREGUNTAS')
+                    req.session.randomplay = [];
+                    res.render('quizzes/random_nomore', {
+                        score: score
+                    });
+                }  else {
+                    res.render('quizzes/random_result', {
+                        score: score,
+                        answer: givenAnswer,
+                        result: result
+                    }); 
+                }   
+            } else { //Fallo
+                const score = req.session.randomplay.length; //guardamos puntos
+                req.session.randomplay = [];
+                res.render('quizzes/random_result', {
+                    score: score,
+                    answer: givenAnswer,
+                    result: result
+                }); 
+            }
+        });
+};
+
